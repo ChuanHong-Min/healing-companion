@@ -4,7 +4,7 @@ import type { AgentConfig, MemoryEntry, Message } from '@/types'
 
 const XINLIU_API_KEY = process.env.XINLIU_API_KEY || ''
 const XINLIU_API_BASE_URL = process.env.XINLIU_API_BASE_URL || 'https://apis.iflow.cn/v1'
-const XINLIU_MODEL = process.env.XINLIU_MODEL || 'qwen3-vl-plus'
+const XINLIU_MODEL = process.env.XINLIU_MODEL || 'deepseek-v3'
 
 export async function POST(request: NextRequest) {
   try {
