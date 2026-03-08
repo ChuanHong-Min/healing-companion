@@ -89,11 +89,14 @@ export async function POST(request: NextRequest) {
 
             for (const line of lines) {
               const trimmed = line.trim()
-              if (!trimmed || trimmed === 'data: [DONE]') continue
-              if (!trimmed.startsWith('data: ')) continue
+              if (!trimmed) continue
+              if (!trimmed.startsWith('data:')) continue
+              // 兼容 "data: {...}" 和 "data:{...}" 两种格式
+              const dataStr = trimmed.slice(5).trimStart()
+              if (dataStr === '[DONE]') continue
 
               try {
-                const json = JSON.parse(trimmed.slice(6))
+                const json = JSON.parse(dataStr)
                 const text = json.choices?.[0]?.delta?.content ?? ''
                 if (text) {
                   fullText += text
