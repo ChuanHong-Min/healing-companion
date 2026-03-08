@@ -82,8 +82,7 @@ function MessageBubble({ message, agentName }: {
             style={{
               backgroundColor: isUser ? theme.primary : theme.bubble,
               color: isUser ? 'white' : theme.text,
-              borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-              ringColor: theme.primary
+              borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px'
             }}
           >
             {message.content || (

@@ -201,7 +201,7 @@ export function useVoice() {
         recognition.onerror = (event: Event & { error?: string }) => {
           setIsRecording(false)
           setTranscript('')
-          const errorCode = (event as SpeechRecognitionErrorEvent).error
+          const errorCode = (event as Event & { error?: string }).error
           let msg = '语音识别出错'
           if (errorCode === 'not-allowed') msg = '麦克风权限被拒绝，请在浏览器设置中允许访问麦克风'
           else if (errorCode === 'no-speech') msg = '未检测到声音，请靠近麦克风再试'
