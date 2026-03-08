@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useAppStore } from '@/store/appStore'
 import { THEME_COLORS, ROLE_TEMPLATES } from '@/types'
 import type {
@@ -26,6 +26,12 @@ export function SettingsPage() {
   const theme = THEME_COLORS[config.themeColor]
   const [activeSection, setActiveSection] = useState<SettingSection>('identity')
   const [saved, setSaved] = useState(false)
+  const [voiceRecording, setVoiceRecording] = useState(false)
+  const [voiceUploaded, setVoiceUploaded] = useState(!!config.customVoiceDataUrl)
+  const [voiceAnalyzing, setVoiceAnalyzing] = useState(false)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleSave = () => {
     setSaved(true)
@@ -66,6 +72,83 @@ export function SettingsPage() {
         ? current.filter(s => s !== scene)
         : [...current, scene]
     })
+  }
+
+  // 分析音频音调，选择最匹配的预设音色
+  const analyzeAndApplyVoice = async (audioBlob: Blob) => {
+    setVoiceAnalyzing(true)
+    try {
+      const arrayBuffer = await audioBlob.arrayBuffer()
+      const audioCtx = new AudioContext()
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer)
+      const channelData = audioBuffer.getChannelData(0)
+
+      // 简单基频估算：计算过零率（zero-crossing rate），高ZCR→高音调
+      let zeroCrossings = 0
+      for (let i = 1; i < channelData.length; i++) {
+        if ((channelData[i] >= 0) !== (channelData[i - 1] >= 0)) zeroCrossings++
+      }
+      const zcr = zeroCrossings / (channelData.length / audioBuffer.sampleRate)
+
+      // ZCR 对应音色映射（粗略估算）
+      // 高音（>180Hz ZCR） → loli/girl；中音(120-180) → neutral/girl；低音(<120) → uncle/oneesan
+      let recommendedVoice: typeof config.voiceTone = 'neutral'
+      if (zcr > 220) recommendedVoice = 'loli'
+      else if (zcr > 170) recommendedVoice = 'girl'
+      else if (zcr > 130) recommendedVoice = 'bubble-girl'
+      else if (zcr > 100) recommendedVoice = 'neutral'
+      else if (zcr > 70) recommendedVoice = 'teen-boy'
+      else recommendedVoice = 'uncle'
+
+      // 将音频存为 DataURL（用于未来云端声音克隆对接）
+      const reader = new FileReader()
+      reader.onload = () => {
+        const dataUrl = reader.result as string
+        setConfig({ voiceTone: recommendedVoice, customVoiceDataUrl: dataUrl })
+        setVoiceUploaded(true)
+        setVoiceAnalyzing(false)
+      }
+      reader.readAsDataURL(audioBlob)
+
+      await audioCtx.close()
+    } catch {
+      setVoiceAnalyzing(false)
+    }
+  }
+
+  const handleVoiceRecordToggle = async () => {
+    if (voiceRecording) {
+      mediaRecorderRef.current?.stop()
+      setVoiceRecording(false)
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        audioChunksRef.current = []
+        const mr = new MediaRecorder(stream)
+        mediaRecorderRef.current = mr
+        mr.ondataavailable = e => audioChunksRef.current.push(e.data)
+        mr.onstop = async () => {
+          stream.getTracks().forEach(t => t.stop())
+          const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+          await analyzeAndApplyVoice(blob)
+        }
+        mr.start()
+        setVoiceRecording(true)
+        // 最多录10秒自动停止
+        setTimeout(() => {
+          if (mr.state === 'recording') mr.stop()
+          setVoiceRecording(false)
+        }, 10000)
+      } catch {
+        alert('无法访问麦克风，请检查权限设置')
+      }
+    }
+  }
+
+  const handleVoiceFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    await analyzeAndApplyVoice(file)
   }
 
   const sections: { id: SettingSection; label: string; icon: string }[] = [
@@ -530,7 +613,59 @@ export function SettingsPage() {
                     </button>
                   ))}
                 </div>
-                <p className="text-xs opacity-40 mt-2">音色基于浏览器系统声音合成，实际效果因设备而异。语音通话模式可体验更丰富的声音。</p>
+                <p className="text-xs opacity-40 mt-2">音色基于微软 Edge Neural TTS 合成，声音效果真实自然。</p>
+              </div>
+
+              {/* 自定义音色 — 录音/上传分析 */}
+              <div>
+                <label className="block text-sm font-medium mb-2 opacity-70">🎤 自定义音色（声音参考）</label>
+                <p className="text-xs opacity-50 mb-3">
+                  录制或上传一段 3~10 秒的声音，系统会自动分析音调特征并为你匹配最接近的预设音色。
+                </p>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <button
+                    onClick={handleVoiceRecordToggle}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all"
+                    style={{
+                      backgroundColor: voiceRecording ? '#ef4444' : `${theme.primary}20`,
+                      color: voiceRecording ? 'white' : theme.primary
+                    }}
+                  >
+                    {voiceRecording ? (
+                      <><span className="w-2 h-2 bg-white rounded-full animate-ping" />停止录音</>
+                    ) : (
+                      <>🎙️ 开始录音</>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all"
+                    style={{ backgroundColor: `${theme.primary}15`, color: theme.primary }}
+                  >
+                    📁 上传音频文件
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="audio/*"
+                    className="hidden"
+                    onChange={handleVoiceFileUpload}
+                  />
+
+                  {voiceAnalyzing && (
+                    <span className="text-sm opacity-60 animate-pulse">分析音调中...</span>
+                  )}
+                  {voiceUploaded && !voiceAnalyzing && (
+                    <span className="text-sm flex items-center gap-1" style={{ color: theme.primary }}>
+                      ✓ 已匹配音色：{config.voiceTone}
+                      <button
+                        onClick={() => { setConfig({ customVoiceDataUrl: undefined }); setVoiceUploaded(false) }}
+                        className="ml-1 text-xs opacity-50 hover:opacity-100"
+                      >✕</button>
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div>

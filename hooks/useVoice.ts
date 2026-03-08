@@ -205,7 +205,7 @@ export function useVoice() {
           let msg = '语音识别出错'
           if (errorCode === 'not-allowed') msg = '麦克风权限被拒绝，请在浏览器设置中允许访问麦克风'
           else if (errorCode === 'no-speech') msg = '未检测到声音，请靠近麦克风再试'
-          else if (errorCode === 'network') msg = '网络错误，请检查网络连接'
+          else if (errorCode === 'network') msg = '语音识别需要联网（Chrome 会将音频发至 Google 服务），请检查网络后重试，或直接打字输入'
           else if (errorCode === 'aborted') msg = '录音已中止'
           console.warn('语音识别错误:', errorCode, msg)
           onError?.(msg)

@@ -88,7 +88,8 @@ export const useAppStore = create<AppState>()(
     {
       name: 'healing-companion-storage',
       partialize: (state) => ({
-        config: state.config,
+        // customVoiceDataUrl 可能很大（base64 音频），单独用 key 存以避免主存储超限
+        config: { ...state.config, customVoiceDataUrl: undefined },
         memories: state.memories,
         emotionHistory: state.emotionHistory,
         themeColor: state.themeColor

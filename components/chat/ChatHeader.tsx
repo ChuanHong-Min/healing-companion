@@ -1,5 +1,6 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { useAppStore } from '@/store/appStore'
 import { THEME_COLORS } from '@/types'
@@ -28,6 +29,47 @@ export function ChatHeader() {
   const theme = THEME_COLORS[config.themeColor]
   const [showMenu, setShowMenu] = useState(false)
   const [showVoiceCall, setShowVoiceCall] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => { setMounted(true) }, [])
+
+  const menuPortal = showMenu && mounted ? createPortal(
+    <>
+      {/* 点击外部关闭遮罩 */}
+      <div
+        className="fixed inset-0"
+        style={{ zIndex: 9998 }}
+        onClick={() => setShowMenu(false)}
+      />
+      {/* 下拉菜单 — 渲染到 body，避免被 overflow:hidden 裁剪 */}
+      <div
+        className="fixed top-14 right-4 w-52 rounded-2xl shadow-2xl border overflow-hidden"
+        style={{ backgroundColor: theme.bg, borderColor: `${theme.secondary}40`, zIndex: 9999 }}
+      >
+        <Link
+          href="/settings"
+          className="flex items-center gap-3 px-4 py-3.5 hover:opacity-70 transition-opacity text-sm"
+          style={{ color: theme.text }}
+          onClick={() => setShowMenu(false)}
+        >
+          ⚙️ 个性化设置
+        </Link>
+        <button
+          onClick={() => { clearMessages(); setShowMenu(false) }}
+          className="w-full flex items-center gap-3 px-4 py-3.5 hover:opacity-70 transition-opacity text-sm text-left"
+          style={{ color: theme.text }}
+        >
+          🗑️ 清空对话
+        </button>
+        <div className="border-t" style={{ borderColor: `${theme.secondary}40` }} />
+        <div className="px-4 py-3">
+          <p className="text-xs opacity-50 mb-2">主题颜色</p>
+          <ThemeSelector compact />
+        </div>
+      </div>
+    </>,
+    document.body
+  ) : null
 
   return (
     <div
@@ -70,7 +112,7 @@ export function ChatHeader() {
         </div>
       </div>
 
-      {/* 语音通话按钮（类豆包） */}
+      {/* 语音通话按钮 */}
       <button
         onClick={() => setShowVoiceCall(true)}
         className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-95 shadow-sm"
@@ -82,7 +124,7 @@ export function ChatHeader() {
         </svg>
       </button>
 
-      {/* 主题选择器 */}
+      {/* 主题选择器（宽屏显示） */}
       <div className="hidden sm:block">
         <ThemeSelector compact />
       </div>
@@ -96,42 +138,8 @@ export function ChatHeader() {
         ⋯
       </button>
 
-      {/* 下拉菜单 */}
-      {showMenu && (
-        <div
-          className="fixed top-14 right-4 w-48 rounded-2xl shadow-xl border overflow-hidden z-[200]"
-          style={{ backgroundColor: theme.bg, borderColor: `${theme.secondary}40` }}
-        >
-          <Link
-            href="/settings"
-            className="flex items-center gap-3 px-4 py-3 hover:opacity-70 transition-opacity text-sm"
-            style={{ color: theme.text }}
-            onClick={() => setShowMenu(false)}
-          >
-            ⚙️ 设置
-          </Link>
-          <button
-            onClick={() => { clearMessages(); setShowMenu(false) }}
-            className="w-full flex items-center gap-3 px-4 py-3 hover:opacity-70 transition-opacity text-sm text-left"
-            style={{ color: theme.text }}
-          >
-            🗑️ 清空对话
-          </button>
-          <div className="border-t" style={{ borderColor: `${theme.secondary}40` }} />
-          <div className="px-4 py-3">
-            <p className="text-xs opacity-50 mb-2">主题颜色</p>
-            <ThemeSelector compact />
-          </div>
-        </div>
-      )}
-
-      {/* 点击外部关闭菜单 */}
-      {showMenu && (
-        <div
-          className="fixed inset-0 z-[199]"
-          onClick={() => setShowMenu(false)}
-        />
-      )}
+      {/* 下拉菜单（Portal 到 body，彻底避免被 overflow:hidden 裁剪） */}
+      {menuPortal}
 
       {/* 语音通话全屏弹窗 */}
       {showVoiceCall && (

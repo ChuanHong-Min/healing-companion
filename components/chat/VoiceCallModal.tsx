@@ -185,10 +185,9 @@ export function VoiceCallModal({ onClose }: VoiceCallModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-[300] flex flex-col items-center justify-between py-12 px-6"
+      className="fixed inset-0 z-[500] flex flex-col items-center justify-between py-12 px-6"
       style={{
-        background: `linear-gradient(160deg, ${theme.primary}ee 0%, ${theme.accent}cc 50%, ${theme.text}dd 100%)`,
-        backdropFilter: 'blur(20px)'
+        background: `linear-gradient(160deg, ${theme.primary} 0%, ${theme.accent}ee 50%, ${theme.secondary}dd 100%)`,
       }}
     >
       {/* 顶部：通话时长 */}
