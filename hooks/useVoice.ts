@@ -5,7 +5,6 @@ import { VOICE_PRESETS } from '@/types'
 
 // 把长文本分割成短句（按标点），模拟人说话时的自然停顿与语速变化
 function splitIntoChunks(text: string): string[] {
-  // 先按换行分割，再按句末标点分割
   const raw = text
     .replace(/\n+/g, '。')
     .split(/(?<=[。！？…~～，,、；;：:\s]{1,2})/)
@@ -26,14 +25,14 @@ export function useVoice() {
   const { config } = useAppStore()
   const recognitionRef = useRef<SpeechRecognition | null>(null)
   const speakingRef = useRef(false)
-  const utteranceQueueRef = useRef<SpeechSynthesisUtterance[]>([])
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   // 获取当前音色配置（优先用 voiceTone preset，fallback neutral）
   const getPreset = useCallback(() => {
     return VOICE_PRESETS[config.voiceTone] ?? VOICE_PRESETS['neutral']
   }, [config.voiceTone])
 
-  // 从系统可用声音里选最匹配的中文声音
+  // 从系统可用声音里选最匹配的中文声音（Web Speech API 降级用）
   const pickVoice = useCallback((gender: 'male' | 'female' | 'neutral') => {
     const voices = window.speechSynthesis.getVoices()
     const zhVoices = voices.filter(v => v.lang.startsWith('zh'))
@@ -44,7 +43,9 @@ export function useVoice() {
         v.name.toLowerCase().includes('female') ||
         v.name.includes('女') ||
         v.name.toLowerCase().includes('meijia') ||
-        v.name.toLowerCase().includes('tingting')
+        v.name.toLowerCase().includes('tingting') ||
+        v.name.toLowerCase().includes('xiaoyi') ||
+        v.name.toLowerCase().includes('xiaoxiao')
       )
       return match ?? zhVoices[0]
     }
@@ -52,7 +53,7 @@ export function useVoice() {
       const match = zhVoices.find(v =>
         v.name.toLowerCase().includes('male') ||
         v.name.includes('男') ||
-        v.name.toLowerCase().includes('yu') ||
+        v.name.toLowerCase().includes('yunxi') ||
         v.name.toLowerCase().includes('lekuo')
       )
       return match ?? zhVoices[zhVoices.length - 1]
@@ -60,42 +61,18 @@ export function useVoice() {
     return zhVoices[0]
   }, [])
 
-  // 用自定义音色（上传音频）播放 —— 浏览器端直接播放 DataURL
-  const speakCustom = useCallback((text: string) => {
-    if (!config.customVoiceDataUrl) return false
-    // 自定义音色目前以系统TTS为底层，但用预设参数微调
-    // 如果未来接入云端克隆API，在这里替换实现
-    return false
-  }, [config.customVoiceDataUrl])
-
-  // TTS - 文字转语音（自然语速版）
-  const speak = useCallback((text: string) => {
+  // 用 Web Speech API 朗读（降级方案）
+  const speakWithWebAPI = useCallback((text: string) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return
-
     window.speechSynthesis.cancel()
-    speakingRef.current = false
-    setIsSpeaking(false)
-    utteranceQueueRef.current = []
-
-    // 尝试自定义音色
-    if (config.voiceTone === 'custom' && speakCustom(text)) return
-
     const preset = getPreset()
-
-    // 根据 voicePitch 配置计算语速/音调倍率
-    // gentle=慢速温柔(×0.85)，normal=正常(×1.0)，energetic=活泼快速(×1.12)
     const pitchMultiplier = config.voicePitch === 'gentle' ? 0.88 : config.voicePitch === 'energetic' ? 1.12 : 1.0
     const rateMultiplier = config.voicePitch === 'gentle' ? 0.85 : config.voicePitch === 'energetic' ? 1.10 : 1.0
-
-    // 按短句分割，让每句可以有细微语速差异
     const chunks = splitIntoChunks(text)
     if (chunks.length === 0) return
-
     speakingRef.current = true
     setIsSpeaking(true)
-
     const voice = pickVoice(preset.gender)
-
     let idx = 0
     const speakNext = () => {
       if (!speakingRef.current || idx >= chunks.length) {
@@ -106,20 +83,14 @@ export function useVoice() {
       const chunk = chunks[idx++]
       const utterance = new SpeechSynthesisUtterance(chunk)
       utterance.lang = 'zh-CN'
-      // 对 pitch/rate 加随机扰动，再叠加 voicePitch 倍率
       utterance.pitch = Math.max(0.5, Math.min(2.0, jitter(preset.pitch * pitchMultiplier, preset.pitchVariance)))
       utterance.rate = Math.max(0.4, Math.min(2.0, jitter(preset.rate * rateMultiplier, preset.rateVariance)))
       utterance.volume = 1.0
       if (voice) utterance.voice = voice
       utterance.onend = speakNext
-      utterance.onerror = () => {
-        speakingRef.current = false
-        setIsSpeaking(false)
-      }
+      utterance.onerror = () => { speakingRef.current = false; setIsSpeaking(false) }
       window.speechSynthesis.speak(utterance)
     }
-
-    // iOS/Safari 需要等 voices 加载
     if (window.speechSynthesis.getVoices().length === 0) {
       window.speechSynthesis.onvoiceschanged = () => {
         window.speechSynthesis.onvoiceschanged = null
@@ -128,47 +99,136 @@ export function useVoice() {
     } else {
       speakNext()
     }
-  }, [config.voiceTone, config.voicePitch, getPreset, pickVoice, speakCustom])
+  }, [config.voicePitch, getPreset, pickVoice])
+
+  // TTS - 优先用 Edge TTS（真实 Neural 声音），降级用 Web Speech API
+  const speak = useCallback(async (text: string) => {
+    if (typeof window === 'undefined') return
+    // 停止之前的播放
+    speakingRef.current = false
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current = null
+    }
+    if (window.speechSynthesis) window.speechSynthesis.cancel()
+    setIsSpeaking(false)
+
+    if (!text.trim()) return
+
+    try {
+      speakingRef.current = true
+      setIsSpeaking(true)
+      const resp = await fetch('/api/speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: text.slice(0, 500),
+          voiceTone: config.voiceTone,
+          voicePitch: config.voicePitch
+        })
+      })
+
+      if (resp.ok && resp.headers.get('Content-Type')?.includes('audio')) {
+        const blob = await resp.blob()
+        const url = URL.createObjectURL(blob)
+        const audio = new Audio(url)
+        audioRef.current = audio
+        audio.onended = () => {
+          URL.revokeObjectURL(url)
+          speakingRef.current = false
+          setIsSpeaking(false)
+        }
+        audio.onerror = () => {
+          URL.revokeObjectURL(url)
+          speakingRef.current = false
+          setIsSpeaking(false)
+        }
+        if (speakingRef.current) await audio.play()
+      } else {
+        // Edge TTS 失败，降级到 Web Speech API
+        speakWithWebAPI(text)
+      }
+    } catch {
+      // 网络错误降级
+      speakWithWebAPI(text)
+    }
+  }, [config.voiceTone, config.voicePitch, speakWithWebAPI])
 
   const stopSpeaking = useCallback(() => {
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      speakingRef.current = false
-      window.speechSynthesis.cancel()
-      setIsSpeaking(false)
+    speakingRef.current = false
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current = null
     }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel()
+    }
+    setIsSpeaking(false)
   }, [])
 
-  // STT - 语音转文字
-  const startRecording = useCallback((onResult: (text: string) => void) => {
+  // STT - 语音转文字（含权限检测与错误提示）
+  const startRecording = useCallback((
+    onResult: (text: string) => void,
+    onError?: (msg: string) => void
+  ) => {
     if (typeof window === 'undefined') return
 
+    // 检测 API 支持
     const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SpeechRecognitionAPI) {
-      console.warn('浏览器不支持语音识别')
+      const msg = '当前浏览器不支持语音识别，请使用 Chrome 或 Edge 浏览器'
+      console.warn(msg)
+      onError?.(msg)
       return
     }
 
-    const recognition = new SpeechRecognitionAPI()
-    recognition.lang = 'zh-CN'
-    recognition.continuous = false
-    recognition.interimResults = true
+    // 请求麦克风权限（提前授权，避免无提示退出）
+    navigator.mediaDevices?.getUserMedia({ audio: true })
+      .then(() => {
+        const recognition = new SpeechRecognitionAPI()
+        recognition.lang = 'zh-CN'
+        recognition.continuous = false
+        recognition.interimResults = true
+        recognition.maxAlternatives = 1
 
-    recognition.onstart = () => setIsRecording(true)
-    recognition.onend = () => setIsRecording(false)
-    recognition.onerror = () => setIsRecording(false)
+        recognition.onstart = () => {
+          setIsRecording(true)
+          setTranscript('')
+        }
+        recognition.onend = () => {
+          setIsRecording(false)
+        }
+        recognition.onerror = (event: Event & { error?: string }) => {
+          setIsRecording(false)
+          setTranscript('')
+          const errorCode = (event as SpeechRecognitionErrorEvent).error
+          let msg = '语音识别出错'
+          if (errorCode === 'not-allowed') msg = '麦克风权限被拒绝，请在浏览器设置中允许访问麦克风'
+          else if (errorCode === 'no-speech') msg = '未检测到声音，请靠近麦克风再试'
+          else if (errorCode === 'network') msg = '网络错误，请检查网络连接'
+          else if (errorCode === 'aborted') msg = '录音已中止'
+          console.warn('语音识别错误:', errorCode, msg)
+          onError?.(msg)
+        }
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const result = event.results[event.results.length - 1]
-      const text = result[0].transcript
-      setTranscript(text)
-      if (result.isFinal) {
-        onResult(text)
-        setTranscript('')
-      }
-    }
+        recognition.onresult = (event: SpeechRecognitionEvent) => {
+          const result = event.results[event.results.length - 1]
+          const text = result[0].transcript
+          setTranscript(text)
+          if (result.isFinal) {
+            onResult(text)
+            setTranscript('')
+          }
+        }
 
-    recognitionRef.current = recognition
-    recognition.start()
+        recognitionRef.current = recognition
+        recognition.start()
+      })
+      .catch(() => {
+        const msg = '无法访问麦克风，请在浏览器地址栏点击🔒允许麦克风权限'
+        console.warn(msg)
+        onError?.(msg)
+      })
   }, [])
 
   const stopRecording = useCallback(() => {
@@ -181,6 +241,7 @@ export function useVoice() {
   useEffect(() => {
     return () => {
       speakingRef.current = false
+      if (audioRef.current) audioRef.current.pause()
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel()
       }

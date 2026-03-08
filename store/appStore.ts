@@ -71,7 +71,10 @@ export const useAppStore = create<AppState>()(
 
       themeColor: 'healing-blue',
       setThemeColor: (color) =>
-        set({ themeColor: color, config: { ...DEFAULT_AGENT_CONFIG, themeColor: color } }),
+        set((state) => ({
+          themeColor: color,
+          config: { ...state.config, themeColor: color }
+        })),
 
       isLoading: false,
       setIsLoading: (loading) => set({ isLoading: loading }),

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useAppStore } from '@/store/appStore'
 import { THEME_COLORS } from '@/types'
 import { ThemeSelector } from '@/components/ui/ThemeSelector'
+import { VoiceCallModal } from './VoiceCallModal'
 
 const EMOTION_COLORS: Record<string, string> = {
   happy: '#fbbf24',
@@ -26,6 +27,7 @@ export function ChatHeader() {
   const { config, clearMessages, currentEmotion } = useAppStore()
   const theme = THEME_COLORS[config.themeColor]
   const [showMenu, setShowMenu] = useState(false)
+  const [showVoiceCall, setShowVoiceCall] = useState(false)
 
   return (
     <div
@@ -67,6 +69,18 @@ export function ChatHeader() {
           )}
         </div>
       </div>
+
+      {/* 语音通话按钮（类豆包） */}
+      <button
+        onClick={() => setShowVoiceCall(true)}
+        className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-95 shadow-sm"
+        style={{ backgroundColor: `${theme.primary}20`, color: theme.primary }}
+        title="语音通话"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+        </svg>
+      </button>
 
       {/* 主题选择器 */}
       <div className="hidden sm:block">
@@ -117,6 +131,11 @@ export function ChatHeader() {
           className="fixed inset-0 z-[199]"
           onClick={() => setShowMenu(false)}
         />
+      )}
+
+      {/* 语音通话全屏弹窗 */}
+      {showVoiceCall && (
+        <VoiceCallModal onClose={() => setShowVoiceCall(false)} />
       )}
     </div>
   )

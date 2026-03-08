@@ -504,23 +504,33 @@ export function SettingsPage() {
 
               <div>
                 <label className="block text-sm font-medium mb-3 opacity-70">语音音色</label>
-                <div className="flex flex-wrap gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {[
-                    {v:'girl',l:'少女'},
-                    {v:'boy',l:'少年'},
-                    {v:'mature-female',l:'御姐'},
-                    {v:'mature-male',l:'青叔'},
-                    {v:'neutral',l:'中性'}
+                    {v:'loli',l:'萝莉 🍬',d:'甜软清脆'},
+                    {v:'girl',l:'少女 🌸',d:'清新甜美'},
+                    {v:'bubble-girl',l:'气泡女 🫧',d:'俏皮软糯'},
+                    {v:'oneesan',l:'御姐 🌙',d:'低沉性感'},
+                    {v:'teen-boy',l:'少男 ☀️',d:'清亮阳光'},
+                    {v:'puppy-boy',l:'奶狗 🐶',d:'撒娇治愈'},
+                    {v:'bubble-boy',l:'气泡男 🫧',d:'软萌有趣'},
+                    {v:'uncle',l:'青叔 🎙️',d:'低沉磁性'},
+                    {v:'neutral',l:'中性 ✨',d:'温柔自然'},
                   ].map(item => (
-                    <SelectButton
+                    <button
                       key={item.v}
-                      value={item.v as typeof config.voiceTone}
-                      current={config.voiceTone}
-                      label={item.l}
                       onClick={() => setConfig({ voiceTone: item.v as typeof config.voiceTone })}
-                    />
+                      className="p-2 rounded-xl border-2 text-left transition-all"
+                      style={{
+                        borderColor: config.voiceTone === item.v ? theme.primary : 'transparent',
+                        backgroundColor: config.voiceTone === item.v ? `${theme.primary}15` : `${theme.bg}`
+                      }}
+                    >
+                      <div className="text-sm font-medium">{item.l}</div>
+                      <div className="text-xs opacity-50">{item.d}</div>
+                    </button>
                   ))}
                 </div>
+                <p className="text-xs opacity-40 mt-2">音色基于浏览器系统声音合成，实际效果因设备而异。语音通话模式可体验更丰富的声音。</p>
               </div>
 
               <div>

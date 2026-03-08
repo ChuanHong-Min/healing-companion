@@ -7,6 +7,7 @@ import { useVoice } from '@/hooks/useVoice'
 
 export function ChatInput() {
   const [inputText, setInputText] = useState('')
+  const [voiceError, setVoiceError] = useState('')
   const { config } = useAppStore()
   const theme = THEME_COLORS[config.themeColor]
   const { sendMessage, isStreaming, emotionRiskLevel } = useChat()
@@ -42,9 +43,17 @@ export function ChatInput() {
     if (isRecording) {
       stopRecording()
     } else {
-      startRecording((text) => {
-        setInputText(prev => prev + text)
-      })
+      setVoiceError('')
+      startRecording(
+        (text) => {
+          setInputText(prev => prev + text)
+        },
+        (errMsg) => {
+          setVoiceError(errMsg)
+          // 3秒后自动清除错误提示
+          setTimeout(() => setVoiceError(''), 4000)
+        }
+      )
     }
   }
 
@@ -83,6 +92,14 @@ export function ChatInput() {
         >
           <span className="w-2 h-2 bg-red-400 rounded-full animate-ping" />
           <span>正在录音... {transcript && `"${transcript}"`}</span>
+        </div>
+      )}
+
+      {/* 语音错误提示 */}
+      {voiceError && (
+        <div className="mb-2 px-3 py-2 rounded-xl text-sm flex items-center gap-2 bg-orange-50 border border-orange-200">
+          <span>🎤</span>
+          <span className="text-orange-700">{voiceError}</span>
         </div>
       )}
 
