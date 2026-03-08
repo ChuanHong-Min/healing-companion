@@ -9,7 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.78.0",
     "caniuse-lite": "1.0.30001558",
     "idb": "^8.0.3",
     "next": "^15.3.3",

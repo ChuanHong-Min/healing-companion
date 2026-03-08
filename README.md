@@ -6,14 +6,14 @@
 
 > 部署完成后在此处添加链接
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FChuanHong-Min%2Fhealing-companion&env=ANTHROPIC_API_KEY&envDescription=Anthropic%20Claude%20API%20Key&envLink=https%3A%2F%2Fconsole.anthropic.com%2F&project-name=healing-companion&repository-name=healing-companion)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FChuanHong-Min%2Fhealing-companion&env=XINLIU_API_KEY&envDescription=%E5%BF%83%E6%B5%81%E5%B9%B3%E5%8F%B0%20API%20Key&envLink=https%3A%2F%2Fiflow.cn%2F&project-name=healing-companion&repository-name=healing-companion)
 
 ## ✨ 功能特性
 
 ### MVP 第一阶段
 - **6种角色模板**：暖心挚友、温柔知己、元气搭子、沉稳陪伴者、治愈树洞、趣味玩伴
 - **3步引导设置**：快速上手，首次进入只需3步即可生成专属 AI
-- **实时对话**：流式 SSE 响应，Claude claude-opus-4-5 驱动
+- **实时对话**：流式 SSE 响应，qwen3-vl-plus 驱动
 - **情绪识别**：自动检测用户情绪状态（开心/难过/焦虑/平静等）
 - **本地记忆**：IndexedDB 存储对话历史和用户习惯记忆
 - **6款治愈主题**：治愈蓝、元气粉、极简黑、森林绿、落日橙、薰衣草紫
@@ -31,7 +31,7 @@
 
 点击上方 "Deploy with Vercel" 按钮，按提示：
 1. 登录 / 注册 Vercel 账号
-2. 填入 `ANTHROPIC_API_KEY`（在 [console.anthropic.com](https://console.anthropic.com/) 获取）
+2. 填入 `XINLIU_API_KEY`（在 [iflow.cn](https://iflow.cn/) 获取）
 3. 点击 Deploy，等待约 2 分钟自动完成
 
 ### 方法二：从已有仓库部署
@@ -40,7 +40,7 @@
 2. 选择 GitHub → 导入 `ChuanHong-Min/healing-companion`
 3. 在 **Environment Variables** 里添加：
    ```
-   ANTHROPIC_API_KEY = sk-xxxxxxxxxxxxxxxx
+   XINLIU_API_KEY = sk-xxxxxxxxxxxxxxxx
    ```
 4. 点击 **Deploy**
 
@@ -48,7 +48,7 @@
 
 ### 环境要求
 - Node.js 18+
-- Anthropic API Key（[获取地址](https://console.anthropic.com/)）
+- 心流平台 API Key（[获取地址](https://iflow.cn/)）
 
 ### 安装步骤
 

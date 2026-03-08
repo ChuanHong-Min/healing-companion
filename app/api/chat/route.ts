@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
 import { buildSystemPrompt, detectEmotion, maskPrivateInfo, extractMemoryFromConversation, assessEmotionRisk, getEmotionLevelGuidance } from '@/lib/utils'
 import type { AgentConfig, MemoryEntry, Message } from '@/types'
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || '',
-  baseURL: process.env.ANTHROPIC_BASE_URL || undefined
-})
+const XINLIU_API_KEY = process.env.XINLIU_API_KEY || ''
+const XINLIU_API_BASE_URL = process.env.XINLIU_API_BASE_URL || 'https://apis.iflow.cn/v1'
+const XINLIU_MODEL = process.env.XINLIU_MODEL || 'qwen3-vl-plus'
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,36 +35,78 @@ export async function POST(request: NextRequest) {
 
     // 构建消息历史（保留最近20条）
     const recentMessages = messages.slice(-20)
-    const anthropicMessages = recentMessages.map((msg) => ({
-      role: msg.role as 'user' | 'assistant',
-      content: msg.role === 'user'
-        ? (config.autoHidePrivate ? maskPrivateInfo(msg.content) : msg.content)
-        : msg.content
-    }))
+    const chatMessages = [
+      { role: 'system', content: systemPrompt },
+      ...recentMessages.map((msg) => ({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.role === 'user'
+          ? (config.autoHidePrivate ? maskPrivateInfo(msg.content) : msg.content)
+          : msg.content
+      }))
+    ]
 
-    // 调用 Claude API（流式）
-    const stream = await client.messages.stream({
-      model: 'claude-opus-4-5-20251101',
-      max_tokens: 500,
-      system: systemPrompt,
-      messages: anthropicMessages
+    // 调用心流平台 OpenAI 兼容 API（流式）
+    const upstream = await fetch(`${XINLIU_API_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${XINLIU_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: XINLIU_MODEL,
+        messages: chatMessages,
+        stream: true,
+        max_tokens: 4096,
+        temperature: 0.7
+      })
     })
 
-    // 返回流式响应
+    if (!upstream.ok) {
+      const errText = await upstream.text()
+      console.error('Xinliu API error:', upstream.status, errText)
+      return NextResponse.json({ error: `上游服务错误: ${upstream.status}` }, { status: 502 })
+    }
+
+    // 将上游 SSE 流转发给客户端，同时注入情绪信息
     const encoder = new TextEncoder()
+    const decoder = new TextDecoder()
+
     const readableStream = new ReadableStream({
       async start(controller) {
+        const reader = upstream.body!.getReader()
         let fullText = ''
+        let buffer = ''
+
         try {
-          for await (const event of stream) {
-            if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-              const text = event.delta.text
-              fullText += text
-              const data = JSON.stringify({ type: 'delta', text, emotion })
-              controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split('\n')
+            // 保留最后一行（可能不完整）
+            buffer = lines.pop() ?? ''
+
+            for (const line of lines) {
+              const trimmed = line.trim()
+              if (!trimmed || trimmed === 'data: [DONE]') continue
+              if (!trimmed.startsWith('data: ')) continue
+
+              try {
+                const json = JSON.parse(trimmed.slice(6))
+                const text = json.choices?.[0]?.delta?.content ?? ''
+                if (text) {
+                  fullText += text
+                  const data = JSON.stringify({ type: 'delta', text, emotion })
+                  controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+                }
+              } catch {
+                // 忽略解析失败的行
+              }
             }
           }
-          // 提取记忆
+
+          // 提取记忆，发送完成事件
           const memoryContent = extractMemoryFromConversation(userText, fullText, emotion)
           const done = JSON.stringify({
             type: 'done',
@@ -78,6 +118,8 @@ export async function POST(request: NextRequest) {
           controller.close()
         } catch (error) {
           controller.error(error)
+        } finally {
+          reader.releaseLock()
         }
       }
     })
