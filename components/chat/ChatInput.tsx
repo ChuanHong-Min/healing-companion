@@ -9,7 +9,7 @@ export function ChatInput() {
   const [inputText, setInputText] = useState('')
   const { config } = useAppStore()
   const theme = THEME_COLORS[config.themeColor]
-  const { sendMessage, isStreaming } = useChat()
+  const { sendMessage, isStreaming, emotionRiskLevel } = useChat()
   const { startRecording, stopRecording, isRecording, transcript } = useVoice()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -53,6 +53,28 @@ export function ChatInput() {
       className="px-4 py-3 border-t backdrop-blur-sm"
       style={{ borderColor: `${theme.secondary}40`, backgroundColor: `${theme.bg}e0` }}
     >
+      {/* 严重情绪风险提示横幅 */}
+      {emotionRiskLevel === 'severe' && (
+        <div className="mb-2 px-4 py-3 rounded-xl text-sm flex items-start gap-2 bg-red-50 border border-red-200">
+          <span className="text-red-500 mt-0.5 flex-shrink-0">🆘</span>
+          <div>
+            <p className="text-red-700 font-medium">如果你现在很痛苦，你并不孤单</p>
+            <p className="text-red-600 text-xs mt-0.5">
+              心理援助热线：<span className="font-bold">400-161-9995</span>（全国）· 北京危机干预：<span className="font-bold">010-82951332</span>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* 中度情绪提示 */}
+      {emotionRiskLevel === 'moderate' && (
+        <div className="mb-2 px-3 py-2 rounded-xl text-xs flex items-center gap-2"
+          style={{ backgroundColor: `${theme.primary}10`, color: theme.primary }}>
+          <span>💝</span>
+          <span>我在认真听，慢慢说，不着急</span>
+        </div>
+      )}
+
       {/* 录音提示 */}
       {isRecording && (
         <div

@@ -3,9 +3,11 @@ import { useState, useCallback, useRef } from 'react'
 import { useAppStore } from '@/store/appStore'
 import type { Message } from '@/types'
 import { generateId } from '@/lib/utils'
+import type { EmotionRiskLevel } from '@/lib/utils'
 
 export function useChat() {
   const [isStreaming, setIsStreaming] = useState(false)
+  const [emotionRiskLevel, setEmotionRiskLevel] = useState<EmotionRiskLevel>('mild')
   const abortControllerRef = useRef<AbortController | null>(null)
   const { config, messages, addMessage, addMemory, setCurrentEmotion, memories } = useAppStore()
 
@@ -21,7 +23,6 @@ export function useChat() {
     addMessage(userMessage)
     setIsStreaming(true)
 
-    // 创建 AI 消息占位
     const assistantId = generateId()
     const assistantMessage: Message = {
       id: assistantId,
@@ -69,7 +70,6 @@ export function useChat() {
 
             if (parsed.type === 'delta') {
               accumulatedText += parsed.text
-              // 更新 AI 消息内容
               useAppStore.setState(state => ({
                 messages: state.messages.map(msg =>
                   msg.id === assistantId
@@ -79,8 +79,8 @@ export function useChat() {
               }))
             } else if (parsed.type === 'done') {
               setCurrentEmotion(parsed.emotion)
+              if (parsed.riskLevel) setEmotionRiskLevel(parsed.riskLevel as EmotionRiskLevel)
 
-              // 保存记忆
               if (parsed.memory && config.memoryScope !== 'no-private') {
                 const memory = {
                   id: generateId(),
@@ -125,5 +125,5 @@ export function useChat() {
     }
   }, [])
 
-  return { sendMessage, isStreaming, stopStreaming }
+  return { sendMessage, isStreaming, stopStreaming, emotionRiskLevel }
 }

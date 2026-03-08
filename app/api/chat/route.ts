@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import { buildSystemPrompt, detectEmotion, maskPrivateInfo, extractMemoryFromConversation } from '@/lib/utils'
+import { buildSystemPrompt, detectEmotion, maskPrivateInfo, extractMemoryFromConversation, assessEmotionRisk, getEmotionLevelGuidance } from '@/lib/utils'
 import type { AgentConfig, MemoryEntry, Message } from '@/types'
 
 const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || ''
+  apiKey: process.env.ANTHROPIC_API_KEY || '',
+  baseURL: process.env.ANTHROPIC_BASE_URL || undefined
 })
 
 export async function POST(request: NextRequest) {
@@ -23,14 +24,16 @@ export async function POST(request: NextRequest) {
     const lastUserMessage = messages[messages.length - 1]
     const userText = lastUserMessage.content
 
-    // 检测情绪
+    // 检测情绪及风险等级
     const emotion = detectEmotion(userText)
+    const riskLevel = assessEmotionRisk(userText, emotion)
 
-    // 隐私保护
-    const safeText = config.autoHidePrivate ? maskPrivateInfo(userText) : userText
-
-    // 构建系统提示
-    const systemPrompt = buildSystemPrompt(config, memories, emotion)
+    // 构建系统提示（传入情绪等级指导）
+    const baseSystemPrompt = buildSystemPrompt(config, memories, emotion)
+    const emotionLevelGuidance = riskLevel !== 'mild'
+      ? `\n\n【情绪分级响应 - ${riskLevel === 'severe' ? '严重' : '中度'}】：${getEmotionLevelGuidance(riskLevel, emotion)}`
+      : ''
+    const systemPrompt = baseSystemPrompt + emotionLevelGuidance
 
     // 构建消息历史（保留最近20条）
     const recentMessages = messages.slice(-20)
@@ -43,7 +46,7 @@ export async function POST(request: NextRequest) {
 
     // 调用 Claude API（流式）
     const stream = await client.messages.stream({
-      model: 'claude-opus-4-5',
+      model: 'claude-opus-4-5-20251101',
       max_tokens: 500,
       system: systemPrompt,
       messages: anthropicMessages
@@ -68,6 +71,7 @@ export async function POST(request: NextRequest) {
           const done = JSON.stringify({
             type: 'done',
             emotion,
+            riskLevel,
             memory: memoryContent
           })
           controller.enqueue(encoder.encode(`data: ${done}\n\n`))

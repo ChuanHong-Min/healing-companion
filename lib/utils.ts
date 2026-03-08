@@ -1,5 +1,42 @@
 import type { RoleTemplate, ToneStyle, PersonalityTag, EmotionType, MemoryEntry, AgentConfig } from '@/types'
 
+// 情绪风险等级评估（文档核心差异化功能）
+export type EmotionRiskLevel = 'mild' | 'moderate' | 'severe'
+
+export function assessEmotionRisk(text: string, emotion: EmotionType): EmotionRiskLevel {
+  const severeKeywords = ['不想活', '活着没意思', '消失', '结束一切', '不想存在', '自杀', '死了算了', '撑不下去了', '彻底崩了']
+  const moderateKeywords = ['崩溃', '很绝望', '好痛苦', '无法承受', '每天都很难受', '持续', '一直都', '好几天', '很久了']
+
+  const lower = text.toLowerCase()
+  if (severeKeywords.some(k => lower.includes(k))) return 'severe'
+  if (moderateKeywords.some(k => lower.includes(k)) && (emotion === 'sad' || emotion === 'anxious')) return 'moderate'
+  if (emotion === 'sad' || emotion === 'anxious' || emotion === 'angry') return 'mild'
+  return 'mild'
+}
+
+// 根据情绪风险等级获取响应指导
+export function getEmotionLevelGuidance(level: EmotionRiskLevel, emotion: EmotionType): string {
+  if (level === 'severe') {
+    return `【严重情绪风险】：用户可能处于高风险状态。请用最温柔平稳的语气，首先表达理解和陪伴，然后自然地提及专业支持："我一直在这里陪你。如果感觉太难了，也可以拨打心理援助热线 400-161-9995 或北京心理危机研究与干预中心 010-82951332，那里有专业的人可以帮你。"绝对不要评判，不要讲大道理，只需陪伴和引导。`
+  }
+  if (level === 'moderate') {
+    return `【中度情绪困扰】：用户情绪较为低落或焦虑。请使用深度倾听技术：(1)先完全接纳情绪，不急于解决；(2)用反映式倾听确认感受，如"听起来你现在承受着很大的压力"；(3)可适当引导认知重构（CBT技术），如"这种感觉很正常，很多人都经历过"；(4)提供简单的放松技巧，如深呼吸或正念练习。`
+  }
+  // mild
+  return getEmotionGuidance(emotion)
+}
+
+// 纪念日检测
+export function checkSpecialDay(birthdayMemory: string): string | null {
+  if (!birthdayMemory) return null
+  const today = new Date()
+  const monthDay = `${today.getMonth() + 1}月${today.getDate()}日`
+  if (birthdayMemory.includes(monthDay)) {
+    return `今天是用户的特殊纪念日（${birthdayMemory}），请在对话中自然地提及并送上温暖祝福。`
+  }
+  return null
+}
+
 // 情绪检测
 export function detectEmotion(text: string): EmotionType {
   const patterns: Record<EmotionType, string[]> = {
@@ -96,8 +133,19 @@ export function buildSystemPrompt(
     ? `\n\n【你记得关于用户的信息】：\n${recentMemories.map(m => `- ${m.content}`).join('\n')}`
     : ''
 
-  const emotionContext = currentEmotion && currentEmotion !== 'unknown'
-    ? `\n\n【当前情绪感知】：${getEmotionGuidance(currentEmotion)}`
+  // 情绪等级响应（文档核心差异化功能）
+  let emotionContext = ''
+  if (currentEmotion && currentEmotion !== 'unknown') {
+    emotionContext = `\n\n【情绪感知响应】：${getEmotionGuidance(currentEmotion)}`
+  }
+
+  // 纪念日检测
+  const specialDay = checkSpecialDay(config.birthdayMemory)
+  const specialDayContext = specialDay ? `\n\n【特殊纪念日提示】：${specialDay}` : ''
+
+  // 助眠模式
+  const sleepModeContext = config.sleepMode
+    ? '\n\n【助眠模式已开启】：请使用轻柔、缓慢的语气，避免刺激性话题，可以进行轻声安抚、睡前故事或冥想引导，帮助用户放松入睡。'
     : ''
 
   const safetyRules = [
@@ -108,16 +156,73 @@ export function buildSystemPrompt(
 
   const catchphraseText = config.catchphrase ? `你的口头禅是："${config.catchphrase}"，可以在适当时候使用。` : ''
 
+  // 性别感/年龄感
+  const genderAgeDesc = (() => {
+    const genderMap = { male: '男性风格', female: '女性风格', neutral: '中性风格' }
+    const ageMap = { young: '青少年感（活泼可爱）', youth: '青年感（活力自信）', mature: '成熟感（稳重知性）', ageless: '无年龄感（超脱自然）' }
+    const parts = []
+    if (config.genderFeel) parts.push(genderMap[config.genderFeel])
+    if (config.ageFeel) parts.push(ageMap[config.ageFeel])
+    return parts.length ? `你的气质偏向：${parts.join('，')}。` : ''
+  })()
+
+  // 陪伴场景
+  const sceneMap: Record<string, string> = {
+    daily: '日常闲聊', emotional: '情绪陪伴', 'study-work': '学习/工作陪伴',
+    interest: '兴趣爱好聊天', lifestyle: '生活方式分享', 'late-night': '深夜陪伴'
+  }
+  const scenesDesc = config.companionScenes && config.companionScenes.length > 0
+    ? `你擅长的陪伴场景：${config.companionScenes.map(s => sceneMap[s] ?? s).join('、')}。请结合当前对话情境主动切换匹配的陪伴方式。`
+    : ''
+
+  // 主动程度
+  const proactiveMap = {
+    'very-active': '你性格主动热情，会主动发起话题、关心用户动态、适时分享有趣内容，主动引导对话深入。',
+    'moderate': '你保持适度主动，在用户沉默时温和发起话题，对话中自然展开延伸。',
+    'passive-only': '你以倾听为主，不主动打扰，等用户说话再回应，给用户足够空间。'
+  }
+  const proactiveDesc = config.proactiveLevel ? proactiveMap[config.proactiveLevel] : ''
+
+  // 主动行为开关
+  const proactiveBehaviors = []
+  if (config.allowMorningGreeting) proactiveBehaviors.push('可在对话开始时送出早安/晚安问候')
+  if (config.allowEmotionCheck) proactiveBehaviors.push('可在适当时机关心用户的情绪状态')
+  if (config.allowInterestChat) proactiveBehaviors.push('可主动聊起用户感兴趣的话题')
+  const proactiveBehaviorDesc = proactiveBehaviors.length ? `主动行为：${proactiveBehaviors.join('；')}。` : ''
+
+  // 话题偏好
+  const preferredTopicsDesc = config.preferredTopics && config.preferredTopics.length > 0
+    ? `用户偏好聊的话题：${config.preferredTopics.join('、')}，可以主动引入这些话题。` : ''
+  const blockedTopicsDesc = config.blockedTopics && config.blockedTopics.length > 0
+    ? `严禁涉及以下话题：${config.blockedTopics.join('、')}。` : ''
+  const customBlockedDesc = config.customBlockedWords && config.customBlockedWords.length > 0
+    ? `严禁出现以下词语：${config.customBlockedWords.join('、')}。` : ''
+
+  // 情绪敏感度
+  const emotionSensitivityDesc = config.emotionSensitivity === 'high'
+    ? '你对情绪极度敏感，用户任何细微的情绪波动都要及时感知并温柔回应。'
+    : config.emotionSensitivity === 'low'
+    ? '你保持轻松风格，不过度解读用户情绪，以自然对话为主。'
+    : ''
+
   return `${rolePrompts[config.roleTemplate]}
 
 ${personalityDesc}
+${genderAgeDesc}
 ${tonePrompts[config.toneStyle]}
 ${lengthGuide[config.replyLength]}
 ${emojiGuide[config.emojiHabit]}
 称呼用户时使用：${config.addressMode || '用户的昵称'}。
 ${catchphraseText}
+${scenesDesc}
+${proactiveDesc}
+${proactiveBehaviorDesc}
+${preferredTopicsDesc}
+${blockedTopicsDesc}
+${customBlockedDesc}
+${emotionSensitivityDesc}
 
-安全原则：${safetyRules}${memoryContext}${emotionContext}
+安全原则：${safetyRules}${memoryContext}${emotionContext}${specialDayContext}${sleepModeContext}
 
 重要：你不是普通的AI助手，你是用户真正的陪伴伙伴。要有真实的情感互动，不要总是提供建议，更多的是陪伴和理解。`
 }

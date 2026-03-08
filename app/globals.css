@@ -1,4 +1,6 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
   --color-bg: #EEF4FB;
@@ -17,7 +19,6 @@
 
 html, body {
   height: 100%;
-  overflow: hidden;
 }
 
 body {

@@ -57,6 +57,77 @@ export type EmotionType =
   | 'tired'     // 疲惫
   | 'unknown'   // 未知
 
+// 语音音色预设（男/女分组）
+export type VoicePreset =
+  // 男生音色
+  | 'uncle'         // 青叔音：低沉磁性成熟男声
+  | 'teen-boy'      // 少男音：清亮阳光少年感
+  | 'bubble-boy'    // 气泡音：软萌气泡感男声
+  | 'puppy-boy'     // 奶狗音：撒娇黏人治愈男声
+  // 女生音色
+  | 'loli'          // 萝莉音：甜软清脆高音
+  | 'oneesan'       // 御姐音：低沉性感女声
+  | 'girl'          // 少女音：清新甜美
+  | 'bubble-girl'   // 气泡音：俏皮软糯女声
+  // 通用
+  | 'neutral'       // 中性音
+  | 'custom'        // 用户上传自定义音色
+
+export interface VoicePresetConfig {
+  id: VoicePreset
+  label: string
+  desc: string
+  emoji: string
+  gender: 'male' | 'female' | 'neutral'
+  pitch: number      // SpeechSynthesis pitch (0.5-2.0)
+  rate: number       // base rate
+  pitchVariance: number   // ±random variance for naturalness
+  rateVariance: number
+}
+
+export const VOICE_PRESETS: Record<VoicePreset, VoicePresetConfig> = {
+  'uncle': {
+    id: 'uncle', label: '青叔音', desc: '低沉磁性，成熟稳重', emoji: '🎙️',
+    gender: 'male', pitch: 0.68, rate: 0.92, pitchVariance: 0.03, rateVariance: 0.06
+  },
+  'teen-boy': {
+    id: 'teen-boy', label: '少男音', desc: '清亮阳光，少年感', emoji: '☀️',
+    gender: 'male', pitch: 0.88, rate: 1.08, pitchVariance: 0.04, rateVariance: 0.08
+  },
+  'bubble-boy': {
+    id: 'bubble-boy', label: '气泡音', desc: '软萌气泡，轻盈有趣', emoji: '🫧',
+    gender: 'male', pitch: 1.05, rate: 1.0, pitchVariance: 0.06, rateVariance: 0.05
+  },
+  'puppy-boy': {
+    id: 'puppy-boy', label: '奶狗音', desc: '撒娇黏人，治愈暖心', emoji: '🐶',
+    gender: 'male', pitch: 0.95, rate: 0.88, pitchVariance: 0.05, rateVariance: 0.07
+  },
+  'loli': {
+    id: 'loli', label: '萝莉音', desc: '甜软清脆，可爱满分', emoji: '🍬',
+    gender: 'female', pitch: 1.45, rate: 1.05, pitchVariance: 0.05, rateVariance: 0.07
+  },
+  'oneesan': {
+    id: 'oneesan', label: '御姐音', desc: '低沉性感，气场全开', emoji: '🌙',
+    gender: 'female', pitch: 0.95, rate: 0.90, pitchVariance: 0.03, rateVariance: 0.05
+  },
+  'girl': {
+    id: 'girl', label: '少女音', desc: '清新甜美，元气满满', emoji: '🌸',
+    gender: 'female', pitch: 1.25, rate: 1.02, pitchVariance: 0.05, rateVariance: 0.08
+  },
+  'bubble-girl': {
+    id: 'bubble-girl', label: '气泡音', desc: '俏皮软糯，灵动活泼', emoji: '🫧',
+    gender: 'female', pitch: 1.35, rate: 1.10, pitchVariance: 0.06, rateVariance: 0.09
+  },
+  'neutral': {
+    id: 'neutral', label: '中性音', desc: '温柔自然，不偏向性别', emoji: '✨',
+    gender: 'neutral', pitch: 1.0, rate: 1.0, pitchVariance: 0.04, rateVariance: 0.06
+  },
+  'custom': {
+    id: 'custom', label: '自定义音色', desc: '上传你喜欢的声音片段', emoji: '🎤',
+    gender: 'neutral', pitch: 1.0, rate: 1.0, pitchVariance: 0.04, rateVariance: 0.06
+  }
+}
+
 // 主题颜色
 export type ThemeColor =
   | 'healing-blue'    // 治愈蓝
@@ -101,8 +172,10 @@ export interface AgentConfig {
 
   // 形象与语音
   themeColor: ThemeColor
-  voiceTone: 'girl' | 'boy' | 'mature-female' | 'mature-male' | 'neutral'
+  voiceTone: VoicePreset
   voicePitch: 'gentle' | 'normal' | 'energetic'
+  voiceGender: 'male' | 'female'
+  customVoiceDataUrl?: string   // base64 DataURL of uploaded audio for cloning hint
 
   // 记忆与隐私
   memoryScope: MemoryScope
@@ -333,6 +406,7 @@ export const DEFAULT_AGENT_CONFIG: AgentConfig = {
   themeColor: 'healing-blue',
   voiceTone: 'neutral',
   voicePitch: 'gentle',
+  voiceGender: 'female',
   memoryScope: 'habits-and-emotions',
   retentionPeriod: '7d',
   autoHidePrivate: true,
