@@ -141,9 +141,10 @@ export function ChatHeader() {
       {/* 下拉菜单（Portal 到 body，彻底避免被 overflow:hidden 裁剪） */}
       {menuPortal}
 
-      {/* 语音通话全屏弹窗 */}
-      {showVoiceCall && (
-        <VoiceCallModal onClose={() => setShowVoiceCall(false)} />
+      {/* 语音通话全屏弹窗 — Portal 到 body，确保完全覆盖整个页面 */}
+      {showVoiceCall && mounted && createPortal(
+        <VoiceCallModal onClose={() => setShowVoiceCall(false)} />,
+        document.body
       )}
     </div>
   )
