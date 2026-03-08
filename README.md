@@ -2,6 +2,12 @@
 
 一款治愈系、情感陪伴型 AI 智能体，懂你、陪你、治愈你。
 
+## 🌐 在线体验
+
+> 部署完成后在此处添加链接
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FChuanHong-Min%2Fhealing-companion&env=ANTHROPIC_API_KEY&envDescription=Anthropic%20Claude%20API%20Key&envLink=https%3A%2F%2Fconsole.anthropic.com%2F&project-name=healing-companion&repository-name=healing-companion)
+
 ## ✨ 功能特性
 
 ### MVP 第一阶段
@@ -19,11 +25,30 @@
 - **🧠 记忆系统升级**：关键词向量搜索，长期记忆检索
 - **🛡️ 隐私保护**：自动屏蔽手机号、身份证、地址等隐私信息
 
-## 🚀 快速开始
+## 🚀 快速部署（Vercel）
+
+### 方法一：一键部署（推荐）
+
+点击上方 "Deploy with Vercel" 按钮，按提示：
+1. 登录 / 注册 Vercel 账号
+2. 填入 `ANTHROPIC_API_KEY`（在 [console.anthropic.com](https://console.anthropic.com/) 获取）
+3. 点击 Deploy，等待约 2 分钟自动完成
+
+### 方法二：从已有仓库部署
+
+1. 打开 [vercel.com/new](https://vercel.com/new)
+2. 选择 GitHub → 导入 `ChuanHong-Min/healing-companion`
+3. 在 **Environment Variables** 里添加：
+   ```
+   ANTHROPIC_API_KEY = sk-xxxxxxxxxxxxxxxx
+   ```
+4. 点击 **Deploy**
+
+## 🖥️ 本地开发
 
 ### 环境要求
 - Node.js 18+
-- Anthropic API Key
+- Anthropic API Key（[获取地址](https://console.anthropic.com/)）
 
 ### 安装步骤
 
@@ -105,12 +130,13 @@ healing-companion/
 
 ## 🔧 技术栈
 
-- **框架**：Next.js 14 + TypeScript
-- **样式**：Tailwind CSS v4
+- **框架**：Next.js 15 + TypeScript
+- **样式**：Tailwind CSS
 - **状态管理**：Zustand
 - **本地存储**：IndexedDB（idb）
 - **AI 引擎**：Anthropic Claude claude-opus-4-5
 - **语音**：Web Speech API（浏览器原生）
+- **部署**：Vercel
 
 ## 📋 功能对照表
 
