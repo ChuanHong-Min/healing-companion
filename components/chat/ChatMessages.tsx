@@ -1,10 +1,9 @@
 'use client'
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect } from 'react'
 import { useAppStore } from '@/store/appStore'
 import { THEME_COLORS } from '@/types'
 import { formatTime } from '@/lib/utils'
 import type { Message } from '@/types'
-import { useVoice } from '@/hooks/useVoice'
 
 const EMOTION_EMOJI: Record<string, string> = {
   happy: '😊',
@@ -17,10 +16,9 @@ const EMOTION_EMOJI: Record<string, string> = {
   unknown: ''
 }
 
-function MessageBubble({ message, agentName, onSpeak }: {
+function MessageBubble({ message, agentName }: {
   message: Message
   agentName: string
-  onSpeak: (text: string) => void
 }) {
   const { config } = useAppStore()
   const theme = THEME_COLORS[config.themeColor]
@@ -41,7 +39,7 @@ function MessageBubble({ message, agentName, onSpeak }: {
           <span className="text-xs opacity-50 ml-1">{agentName}</span>
         )}
         <div
-          className="px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm relative group"
+          className="px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm"
           style={{
             backgroundColor: isUser ? theme.primary : theme.bubble,
             color: isUser ? 'white' : theme.text,
@@ -54,18 +52,6 @@ function MessageBubble({ message, agentName, onSpeak }: {
               <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: theme.primary, animationDelay: '150ms' }} />
               <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: theme.primary, animationDelay: '300ms' }} />
             </span>
-          )}
-
-          {/* 语音播放按钮 */}
-          {!isUser && message.content && (
-            <button
-              onClick={() => onSpeak(message.content)}
-              className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-xs shadow-sm"
-              style={{ backgroundColor: theme.secondary, color: theme.text }}
-              title="朗读"
-            >
-              🔊
-            </button>
           )}
         </div>
 
@@ -93,7 +79,6 @@ export function ChatMessages() {
   const { config, messages } = useAppStore()
   const theme = THEME_COLORS[config.themeColor]
   const bottomRef = useRef<HTMLDivElement>(null)
-  const { speak } = useVoice()
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -140,7 +125,6 @@ export function ChatMessages() {
           key={message.id}
           message={message}
           agentName={config.agentName}
-          onSpeak={speak}
         />
       ))}
       <div ref={bottomRef} />

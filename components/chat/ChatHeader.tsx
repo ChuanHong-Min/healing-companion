@@ -85,7 +85,7 @@ export function ChatHeader() {
       {/* 下拉菜单 */}
       {showMenu && (
         <div
-          className="absolute top-full right-4 mt-1 w-48 rounded-2xl shadow-xl border overflow-hidden z-50"
+          className="fixed top-14 right-4 w-48 rounded-2xl shadow-xl border overflow-hidden z-[200]"
           style={{ backgroundColor: theme.bg, borderColor: `${theme.secondary}40` }}
         >
           <Link
@@ -114,7 +114,7 @@ export function ChatHeader() {
       {/* 点击外部关闭菜单 */}
       {showMenu && (
         <div
-          className="fixed inset-0 z-40"
+          className="fixed inset-0 z-[199]"
           onClick={() => setShowMenu(false)}
         />
       )}
