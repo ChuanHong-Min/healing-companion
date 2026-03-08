@@ -202,16 +202,16 @@ export function VoiceCallModal({ onClose }: VoiceCallModalProps) {
       <div className="flex flex-col items-center gap-6">
         {/* AI 头像：随状态变化动画 */}
         <div className="relative">
-          {/* 外圈波纹（说话/监听时） */}
+          {/* 外圈光晕（说话/监听时） */}
           {(callState === 'speaking' || callState === 'listening') && (
             <>
               <div
-                className="absolute inset-0 rounded-full animate-ping opacity-30"
-                style={{ backgroundColor: 'white', transform: 'scale(1.4)' }}
+                className="absolute inset-0 rounded-full animate-pulse opacity-25"
+                style={{ backgroundColor: 'white', transform: 'scale(1.35)', animationDuration: '2s' }}
               />
               <div
-                className="absolute inset-0 rounded-full animate-pulse opacity-20"
-                style={{ backgroundColor: 'white', transform: 'scale(1.7)', animationDelay: '0.3s' }}
+                className="absolute inset-0 rounded-full animate-pulse opacity-15"
+                style={{ backgroundColor: 'white', transform: 'scale(1.65)', animationDuration: '2.8s', animationDelay: '0.5s' }}
               />
             </>
           )}
