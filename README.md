@@ -3,10 +3,7 @@
 一款治愈系、情感陪伴型 AI 智能体，懂你、陪你、治愈你。
 
 ## 🌐 在线体验
-
-> 部署完成后在此处添加链接
-[
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FChuanHong-Min%2Fhealing-companion&env=XINLIU_API_KEY&envDescription=%E5%BF%83%E6%B5%81%E5%B9%B3%E5%8F%B0%20API%20Key&envLink=https%3A%2F%2Fiflow.cn%2F&project-name=healing-companion&repository-name=healing-companion)](https://www.agentspacex.top/chat)
+https://www.agentspacex.top/chat
 
 ## ✨ 功能特性
 
