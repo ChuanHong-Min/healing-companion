@@ -91,7 +91,7 @@ export function ChatInput() {
           style={{ backgroundColor: `${theme.primary}20`, color: theme.primary }}
         >
           <span className="w-2 h-2 bg-red-400 rounded-full animate-ping" />
-          <span>正在录音... {transcript && `"${transcript}"`}</span>
+          <span>{transcript && transcript !== '正在聆听...' ? `"${transcript}"` : '🎤 正在聆听，说完会自动识别...'}</span>
         </div>
       )}
 

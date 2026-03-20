@@ -19,7 +19,7 @@ export function VoiceCallModal({ onClose }: VoiceCallModalProps) {
   const { config, messages, addMessage, addMemory, memories, setCurrentEmotion } = useAppStore()
   const theme = THEME_COLORS[config.themeColor]
   const voicePreset = VOICE_PRESETS[config.voiceTone] ?? VOICE_PRESETS['neutral']
-  const { speak, stopSpeaking, isSpeaking, startRecording, stopRecording, isRecording } = useVoice()
+  const { speak, stopSpeaking, isSpeaking, startRecording, stopRecording, isRecording, transcript } = useVoice()
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const isActiveRef = useRef(true)
 
@@ -35,6 +35,17 @@ export function VoiceCallModal({ onClose }: VoiceCallModalProps) {
     }
   }, [callState])
 
+  // 自动停录计时器（listening 状态下，录音 4 秒后自动 stop → 触发 Whisper 识别）
+  // MediaRecorder 无实时文字，靠计时控制录音时长
+  const autoStopTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  const clearAutoStop = () => {
+    if (autoStopTimerRef.current) {
+      clearTimeout(autoStopTimerRef.current)
+      autoStopTimerRef.current = null
+    }
+  }
+
   const formatDuration = (sec: number) => {
     const m = Math.floor(sec / 60).toString().padStart(2, '0')
     const s = (sec % 60).toString().padStart(2, '0')
@@ -46,6 +57,7 @@ export function VoiceCallModal({ onClose }: VoiceCallModalProps) {
     if (!isActiveRef.current) return
     setCallState('thinking')
     setAgentSpeech('')
+    setUserSpeech(userText)
 
     const userMsg = {
       id: generateId(),
@@ -104,7 +116,6 @@ export function VoiceCallModal({ onClose }: VoiceCallModalProps) {
 
       if (!isActiveRef.current || !fullText) return
 
-      // 把 AI 回复存入消息
       addMessage({
         id: generateId(),
         role: 'assistant',
@@ -112,55 +123,67 @@ export function VoiceCallModal({ onClose }: VoiceCallModalProps) {
         timestamp: Date.now()
       })
 
-      // 语音播放回复
       setCallState('speaking')
       await speak(fullText)
 
       if (isActiveRef.current) {
-        // 播放完后自动开始监听用户说话
-        setCallState('listening')
         startListening()
       }
     } catch (err) {
       console.error('语音通话 AI 请求失败:', err)
       if (isActiveRef.current) {
-        setCallState('listening')
         startListening()
       }
     }
   }, [addMemory, addMessage, config, memories, messages, setCurrentEmotion, speak])
 
   // 开始监听用户说话
+  // 策略：录音 4 秒后自动停止并发送 Whisper 识别
+  // 用户可以多次轮流说话（每轮 4s）
   const startListening = useCallback(() => {
     if (!isActiveRef.current) return
     setUserSpeech('')
     setCallState('listening')
+    clearAutoStop()
+
     startRecording(
       (text) => {
+        clearAutoStop()
         if (!isActiveRef.current || !text.trim()) return
-        setUserSpeech(text)
         sendToAI(text)
       },
-      () => {
-        // 出错后继续监听
+      (errMsg) => {
+        clearAutoStop()
+        console.warn('语音监听错误:', errMsg)
+        // 错误时设置提示文字，3 秒后重新监听
+        setUserSpeech(errMsg)
         if (isActiveRef.current) {
-          setTimeout(() => startListening(), 1000)
+          setTimeout(() => {
+            if (isActiveRef.current) startListening()
+          }, 3000)
         }
       }
     )
-  }, [sendToAI, startRecording])
 
-  // 组件挂载后延迟0.8s接通，模拟真实电话感
+    // 4 秒后自动停止录音（触发 Whisper 识别）
+    autoStopTimerRef.current = setTimeout(() => {
+      if (!isActiveRef.current || callState !== 'listening') return
+      stopRecording()
+    }, 4000)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sendToAI, startRecording, stopRecording])
+
+  // 组件挂载后延迟 0.8s 接通，先让 AI 打招呼
   useEffect(() => {
     isActiveRef.current = true
     const connectTimer = setTimeout(() => {
       if (!isActiveRef.current) return
       setCallState('listening')
-      // 先让 AI 打个招呼
       sendToAI('你好，我想和你语音聊聊')
     }, 800)
     return () => {
       clearTimeout(connectTimer)
+      clearAutoStop()
       isActiveRef.current = false
       stopSpeaking()
       stopRecording()
@@ -170,6 +193,7 @@ export function VoiceCallModal({ onClose }: VoiceCallModalProps) {
 
   const handleHangUp = () => {
     isActiveRef.current = false
+    clearAutoStop()
     stopSpeaking()
     stopRecording()
     onClose()
@@ -178,7 +202,7 @@ export function VoiceCallModal({ onClose }: VoiceCallModalProps) {
   const stateLabel: Record<CallState, string> = {
     idle: '准备中...',
     connecting: '连接中...',
-    listening: '在听你说话...',
+    listening: isRecording ? '录音中，说完自动识别...' : '准备好后会自动开始录音',
     thinking: '思考中...',
     speaking: `${config.agentName}正在说话`
   }
@@ -202,7 +226,6 @@ export function VoiceCallModal({ onClose }: VoiceCallModalProps) {
       <div className="flex flex-col items-center gap-6">
         {/* AI 头像：随状态变化动画 */}
         <div className="relative">
-          {/* 外圈光晕（说话/监听时） */}
           {(callState === 'speaking' || callState === 'listening') && (
             <>
               <div
@@ -231,20 +254,32 @@ export function VoiceCallModal({ onClose }: VoiceCallModalProps) {
           </p>
         </div>
 
-        {/* 字幕区：显示当前在说的内容 */}
+        {/* 字幕区 */}
         <div
           className="w-full max-w-sm min-h-16 px-4 py-3 rounded-2xl text-center"
           style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}
         >
-          {callState === 'listening' && userSpeech && (
-            <p className="text-white/90 text-sm">你：{userSpeech}</p>
+          {callState === 'listening' && isRecording && (
+            <div className="flex flex-col items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 bg-red-400 rounded-full animate-ping" />
+                <span className="text-white/80 text-xs">正在录音...</span>
+              </div>
+              <p className="text-white/60 text-xs">说完后会自动识别</p>
+            </div>
           )}
-          {callState === 'listening' && !userSpeech && (
+          {callState === 'listening' && !isRecording && transcript === '识别中...' && (
+            <p className="text-white/70 text-sm animate-pulse">🔄 正在识别语音...</p>
+          )}
+          {callState === 'listening' && !isRecording && (!transcript || transcript === '正在录音...') && (
             <div className="flex items-center justify-center gap-1.5">
               <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
               <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
               <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
             </div>
+          )}
+          {callState === 'listening' && userSpeech && !isRecording && transcript !== '识别中...' && (
+            <p className="text-white/90 text-sm">你：{userSpeech}</p>
           )}
           {callState === 'thinking' && (
             <p className="text-white/60 text-sm animate-pulse">正在思考...</p>
@@ -261,7 +296,7 @@ export function VoiceCallModal({ onClose }: VoiceCallModalProps) {
         {isRecording && (
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}>
             <span className="w-2 h-2 bg-red-400 rounded-full animate-ping" />
-            <span className="text-white/80 text-xs">麦克风已开启</span>
+            <span className="text-white/80 text-xs">麦克风录音中</span>
           </div>
         )}
       </div>

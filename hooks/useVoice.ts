@@ -21,23 +21,22 @@ function jitter(base: number, variance: number): number {
 export function useVoice() {
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
+  // transcript: 录音中实时显示的占位文字（MediaRecorder 无实时识别，仅显示状态）
   const [transcript, setTranscript] = useState('')
   const { config } = useAppStore()
-  const recognitionRef = useRef<SpeechRecognition | null>(null)
   const speakingRef = useRef(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  // 获取当前音色配置（优先用 voiceTone preset，fallback neutral）
+  // ─── TTS 相关 ────────────────────────────────────────────────────────────────
+
   const getPreset = useCallback(() => {
     return VOICE_PRESETS[config.voiceTone] ?? VOICE_PRESETS['neutral']
   }, [config.voiceTone])
 
-  // 从系统可用声音里选最匹配的中文声音（Web Speech API 降级用）
   const pickVoice = useCallback((gender: 'male' | 'female' | 'neutral') => {
     const voices = window.speechSynthesis.getVoices()
     const zhVoices = voices.filter(v => v.lang.startsWith('zh'))
     if (zhVoices.length === 0) return null
-
     if (gender === 'female') {
       const match = zhVoices.find(v =>
         v.name.toLowerCase().includes('female') ||
@@ -61,7 +60,6 @@ export function useVoice() {
     return zhVoices[0]
   }, [])
 
-  // 用 Web Speech API 朗读（降级方案）
   const speakWithWebAPI = useCallback((text: string) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return
     window.speechSynthesis.cancel()
@@ -101,10 +99,8 @@ export function useVoice() {
     }
   }, [config.voicePitch, getPreset, pickVoice])
 
-  // TTS - 优先用 Edge TTS（真实 Neural 声音），降级用 Web Speech API
   const speak = useCallback(async (text: string) => {
     if (typeof window === 'undefined') return
-    // 停止之前的播放
     speakingRef.current = false
     if (audioRef.current) {
       audioRef.current.pause()
@@ -112,9 +108,7 @@ export function useVoice() {
     }
     if (window.speechSynthesis) window.speechSynthesis.cancel()
     setIsSpeaking(false)
-
     if (!text.trim()) return
-
     try {
       speakingRef.current = true
       setIsSpeaking(true)
@@ -127,7 +121,6 @@ export function useVoice() {
           voicePitch: config.voicePitch
         })
       })
-
       if (resp.ok && resp.headers.get('Content-Type')?.includes('audio')) {
         const blob = await resp.blob()
         const url = URL.createObjectURL(blob)
@@ -145,11 +138,9 @@ export function useVoice() {
         }
         if (speakingRef.current) await audio.play()
       } else {
-        // Edge TTS 失败，降级到 Web Speech API
         speakWithWebAPI(text)
       }
     } catch {
-      // 网络错误降级
       speakWithWebAPI(text)
     }
   }, [config.voiceTone, config.voicePitch, speakWithWebAPI])
@@ -166,76 +157,131 @@ export function useVoice() {
     setIsSpeaking(false)
   }, [])
 
-  // STT - 语音转文字（含权限检测与错误提示）
-  const startRecording = useCallback((
+  // ─── STT：MediaRecorder + Whisper（完全离线不依赖 Google）────────────────────
+  //
+  // 工作流：
+  //   startRecording() → MediaRecorder 开始录音，每 200ms 收集 chunk
+  //   stopRecording()  → 停止录音，自动把所有 chunk 合成 Blob → POST /api/transcribe
+  //                       → onResult(text) 回调
+  //
+  // VoiceCallModal 在外部做"停顿检测"：
+  //   监听 recordingDuration（秒），若 silenceDuration 达到阈值就调 stopRecording()
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const isTranscribingRef = useRef(false)
+  const onResultCallbackRef = useRef<((text: string) => void) | null>(null)
+  const onErrorCallbackRef = useRef<((msg: string) => void) | null>(null)
+
+  const startRecording = useCallback(async (
     onResult: (text: string) => void,
     onError?: (msg: string) => void
   ) => {
     if (typeof window === 'undefined') return
 
-    // 检测 API 支持
-    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SpeechRecognitionAPI) {
-      const msg = '当前浏览器不支持语音识别，请使用 Chrome 或 Edge 浏览器'
-      console.warn(msg)
-      onError?.(msg)
-      return
+    // 清理上一次
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try { mediaRecorderRef.current.stop() } catch { /* ignore */ }
     }
+    audioChunksRef.current = []
+    onResultCallbackRef.current = onResult
+    onErrorCallbackRef.current = onError ?? null
 
-    // 请求麦克风权限（提前授权，避免无提示退出）
-    navigator.mediaDevices?.getUserMedia({ audio: true })
-      .then(() => {
-        const recognition = new SpeechRecognitionAPI()
-        recognition.lang = 'zh-CN'
-        recognition.continuous = false
-        recognition.interimResults = true
-        recognition.maxAlternatives = 1
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
 
-        recognition.onstart = () => {
-          setIsRecording(true)
-          setTranscript('')
+      // 选 webm/opus（Chrome/Firefox），降级 ogg，再降级不指定格式
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+        ? 'audio/ogg;codecs=opus'
+        : ''
+
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+      mediaRecorderRef.current = recorder
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          audioChunksRef.current.push(e.data)
         }
-        recognition.onend = () => {
-          setIsRecording(false)
-        }
-        recognition.onerror = (event: Event & { error?: string }) => {
-          setIsRecording(false)
-          setTranscript('')
-          const errorCode = (event as Event & { error?: string }).error
-          let msg = '语音识别出错'
-          if (errorCode === 'not-allowed') msg = '麦克风权限被拒绝，请在浏览器设置中允许访问麦克风'
-          else if (errorCode === 'no-speech') msg = '未检测到声音，请靠近麦克风再试'
-          else if (errorCode === 'network') msg = '语音识别需要联网（Chrome 会将音频发至 Google 服务），请检查网络后重试，或直接打字输入'
-          else if (errorCode === 'aborted') msg = '录音已中止'
-          console.warn('语音识别错误:', errorCode, msg)
-          onError?.(msg)
+      }
+
+      recorder.onstop = async () => {
+        // 停止麦克风轨道，释放资源
+        stream.getTracks().forEach(t => t.stop())
+        setIsRecording(false)
+        setTranscript('')
+
+        const chunks = audioChunksRef.current
+        audioChunksRef.current = []
+
+        if (chunks.length === 0 || isTranscribingRef.current) return
+        const totalSize = chunks.reduce((s, b) => s + b.size, 0)
+        if (totalSize < 1000) {
+          // 录音太短，忽略
+          return
         }
 
-        recognition.onresult = (event: SpeechRecognitionEvent) => {
-          const result = event.results[event.results.length - 1]
-          const text = result[0].transcript
-          setTranscript(text)
-          if (result.isFinal) {
-            onResult(text)
+        isTranscribingRef.current = true
+        try {
+          const audioBlob = new Blob(chunks, { type: mimeType || 'audio/webm' })
+          const formData = new FormData()
+          formData.append('audio', audioBlob, 'audio.webm')
+
+          setTranscript('识别中...')
+          const resp = await fetch('/api/transcribe', {
+            method: 'POST',
+            body: formData
+          })
+
+          if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({})) as { error?: string }
+            onErrorCallbackRef.current?.(errData.error ?? '语音识别失败，请重试')
             setTranscript('')
+            return
           }
-        }
 
-        recognitionRef.current = recognition
-        recognition.start()
-      })
-      .catch(() => {
-        const msg = '无法访问麦克风，请在浏览器地址栏点击🔒允许麦克风权限'
-        console.warn(msg)
-        onError?.(msg)
-      })
+          const data = await resp.json() as { text?: string }
+          const text = (data.text ?? '').trim()
+          setTranscript('')
+          if (text) {
+            onResultCallbackRef.current?.(text)
+          }
+        } catch (err) {
+          console.error('Transcribe error:', err)
+          onErrorCallbackRef.current?.('网络错误，语音识别失败')
+          setTranscript('')
+        } finally {
+          isTranscribingRef.current = false
+        }
+      }
+
+      recorder.start(200) // 每 200ms emit 一个 chunk
+      setIsRecording(true)
+      setTranscript('正在录音...')
+    } catch (err) {
+      setIsRecording(false)
+      setTranscript('')
+      if (err instanceof DOMException) {
+        if (err.name === 'NotAllowedError') {
+          onError?.('麦克风权限被拒绝，请点击地址栏 🔒 允许麦克风权限')
+        } else if (err.name === 'NotFoundError') {
+          onError?.('未找到麦克风设备，请检查麦克风是否连接')
+        } else {
+          onError?.(`麦克风访问失败：${err.message}`)
+        }
+      } else {
+        onError?.('无法启动录音，请刷新页面重试')
+      }
+    }
   }, [])
 
   const stopRecording = useCallback(() => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop()
-      setIsRecording(false)
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try { mediaRecorderRef.current.stop() } catch { /* ignore */ }
     }
+    // setIsRecording 和 setTranscript 在 onstop 里设置，这里只设置视觉反馈
+    setIsRecording(false)
   }, [])
 
   useEffect(() => {
@@ -245,7 +291,9 @@ export function useVoice() {
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel()
       }
-      if (recognitionRef.current) recognitionRef.current.stop()
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        try { mediaRecorderRef.current.stop() } catch { /* ignore */ }
+      }
     }
   }, [])
 

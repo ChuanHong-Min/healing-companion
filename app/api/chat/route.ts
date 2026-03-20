@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { buildSystemPrompt, detectEmotion, maskPrivateInfo, extractMemoryFromConversation, assessEmotionRisk, getEmotionLevelGuidance } from '@/lib/utils'
+import { buildSystemPrompt, detectEmotion, maskPrivateInfo, extractMemoryFromConversation, assessEmotionRisk, getEmotionLevelGuidance, retrieveKBContext } from '@/lib/utils'
 import type { AgentConfig, MemoryEntry, Message } from '@/types'
 
 const XINLIU_API_KEY = process.env.XINLIU_API_KEY || ''
@@ -26,12 +26,18 @@ export async function POST(request: NextRequest) {
     const emotion = detectEmotion(userText)
     const riskLevel = assessEmotionRisk(userText, emotion)
 
+    // RAG：从知识库检索相关参考内容
+    const kbContext = retrieveKBContext(userText, 3)
+    const kbSection = kbContext
+      ? `\n\n【知识库参考（仅供内容方向参考，禁止照搬开头句式）】：\n${kbContext}`
+      : ''
+
     // 构建系统提示（传入情绪等级指导）
     const baseSystemPrompt = buildSystemPrompt(config, memories, emotion)
     const emotionLevelGuidance = riskLevel !== 'mild'
       ? `\n\n【情绪分级响应 - ${riskLevel === 'severe' ? '严重' : '中度'}】：${getEmotionLevelGuidance(riskLevel, emotion)}`
       : ''
-    const systemPrompt = baseSystemPrompt + emotionLevelGuidance
+    const systemPrompt = baseSystemPrompt + emotionLevelGuidance + kbSection
 
     // 构建消息历史（保留最近20条）
     const recentMessages = messages.slice(-20)

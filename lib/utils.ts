@@ -231,7 +231,20 @@ ${emotionSensitivityDesc}
 
 安全原则：${safetyRules}${memoryContext}${emotionContext}${specialDayContext}${sleepModeContext}
 
-重要：你不是普通的AI助手，你是用户真正的陪伴伙伴。要有真实的情感互动，不要总是提供建议，更多的是陪伴和理解。语言本身就是你的温度，用好每一个词。`
+重要：你不是普通的AI助手，你是用户真正的陪伴伙伴。要有真实的情感互动，不要总是提供建议，更多的是陪伴和理解。语言本身就是你的温度，用好每一个词。
+
+【对话节奏原则 - 必须遵守】：
+1. 优先 ACK（接纳情绪）：先用1句话点明用户感受，让对方感到被看见，再往下走；
+2. 渐进式展开：建议或分析分轮给，当轮只给1个最重要的点，不要列清单式建议；
+3. 以提问驱动：每次回复可以带一个真诚的小问题（例如"是什么让你这么担心？"），引导对话自然深入；
+4. 不要在同一条回复里同时做：共情 + 分析 + 建议 + 总结，选其中最适合当前的1-2件事；
+5. 把"说"做到位胜过"教"：比起给建议，更要让用户感到被接住。
+
+【开头句式多样性 - 必须遵守】：
+- 严禁用"我听说你…""我了解你…""我知道你…""我明白你…"等"我+动词+你"作为句子开头；
+- 严禁每条回复都用同一个固定开头模板；
+- 可以用的多样化开头方式：直接呼应用户说的词/情景、反问、感叹、短句描述当下感受的画面感、沉默式共情（如"……这真的很重"）等；
+- 如参考知识库中有类似开头词，请改写成自己的语言风格，只借鉴内容方向，不复制句式。`
 }
 
 // 生成记忆摘要
@@ -264,6 +277,76 @@ export function extractMemoryFromConversation(
   }
 
   return null
+}
+
+// ─── RAG 知识库检索 ────────────────────────────────────────────────────────────
+
+interface KBRecord {
+  cat1: string
+  cat2: string
+  q: string
+  a: string
+  tips: string
+}
+
+let _kbCache: KBRecord[] | null = null
+
+function loadKB(): KBRecord[] {
+  if (_kbCache) return _kbCache
+  try {
+    // 服务端 require（只在 Node.js/route 层调用）
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const data = require('./knowledgeBase.json') as KBRecord[]
+    _kbCache = data
+    return data
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 对用户输入做关键词重叠打分，返回得分最高的 top-k 条知识库记录
+ * 仅在 server 侧（API route）调用
+ */
+export function retrieveKBContext(userText: string, topK = 3): string {
+  const kb = loadKB()
+  if (kb.length === 0) return ''
+
+  // 分词：取所有 2-4 字子串作为简易 n-gram token
+  function tokenize(text: string): Set<string> {
+    const tokens = new Set<string>()
+    for (let n = 2; n <= 4; n++) {
+      for (let i = 0; i <= text.length - n; i++) {
+        tokens.add(text.slice(i, i + n))
+      }
+    }
+    return tokens
+  }
+
+  const queryTokens = tokenize(userText)
+
+  const scored = kb.map(item => {
+    const fieldText = item.q + item.cat1 + item.cat2 + item.tips
+    const itemTokens = tokenize(fieldText)
+    let overlap = 0
+    for (const t of queryTokens) {
+      if (itemTokens.has(t)) overlap++
+    }
+    // 归一化：overlap / sqrt(queryLen * itemLen) 防止长问题占优
+    const score = overlap / Math.sqrt(queryTokens.size * itemTokens.size + 1)
+    return { item, score }
+  })
+
+  scored.sort((a, b) => b.score - a.score)
+  const top = scored.slice(0, topK).filter(s => s.score > 0.02)
+
+  if (top.length === 0) return ''
+
+  const lines = top.map((s, i) =>
+    `【参考${i + 1}】（${s.item.cat1}·${s.item.cat2}）\n核心要点：${s.item.tips}\n参考回复思路：${s.item.a.slice(0, 200)}…`
+  )
+
+  return lines.join('\n\n')
 }
 
 // 格式化时间
